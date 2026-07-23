@@ -103,7 +103,7 @@ npm run seed --prefix server
 - Color palette + HTML canvas grid
 - 10-second cooldown with on-screen timer
 - “X pixels painted today” from Mongo
-- **Replay** — blank board, animate history at 20 pixels / animation frame
+- **Replay** — blank board, animate paintLog history (slow for short logs so you can see it; ~4s for longer ones), then return to the live board
 - **“Waking up the server…”** banner for free-tier cold starts
 
 ## Deploy (cheap & legit)
