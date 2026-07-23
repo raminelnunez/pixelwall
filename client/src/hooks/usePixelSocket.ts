@@ -5,15 +5,28 @@ import { getVisitorId } from "../visitorId";
 import type {
   BoardPayload,
   PaintRejectedPayload,
-  PixelCell,
   PixelUpdatedPayload,
 } from "../types";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
+function emptyWhiteBoard(size: number): Map<string, string> {
+  const map = new Map<string, string>();
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      map.set(`${x}_${y}`, "#ffffff");
+    }
+  }
+  return map;
+}
+
 export function usePixelSocket() {
   const socketRef = useRef<Socket | null>(null);
   const cooldownMsRef = useRef(10_000);
+  const replayingRef = useRef(false);
+  /** Always-current live board (updated even during replay). */
+  const livePixelsRef = useRef<Map<string, string>>(new Map());
+
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [pixels, setPixels] = useState<Map<string, string>>(new Map());
   const [gridSize, setGridSize] = useState(50);
@@ -21,6 +34,7 @@ export function usePixelSocket() {
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [rejectMessage, setRejectMessage] = useState<string | null>(null);
   const [wakingUp, setWakingUp] = useState(false);
+  const [replaying, setReplayingState] = useState(false);
 
   useEffect(() => {
     const visitorId = getVisitorId();
@@ -61,16 +75,25 @@ export function usePixelSocket() {
       for (const p of payload.pixels) {
         map.set(`${p.x}_${p.y}`, p.color);
       }
-      setPixels(map);
+      livePixelsRef.current = map;
       setGridSize(payload.gridSize);
       setCooldownMs(payload.cooldownMs);
       cooldownMsRef.current = payload.cooldownMs;
       setStatus("connected");
       setWakingUp(false);
       window.clearTimeout(wakeTimer);
+      // Don't clobber an in-progress time-lapse
+      if (!replayingRef.current) {
+        setPixels(new Map(map));
+      }
     });
 
     socket.on("pixelUpdated", (payload: PixelUpdatedPayload) => {
+      livePixelsRef.current = new Map(livePixelsRef.current).set(
+        `${payload.x}_${payload.y}`,
+        payload.color
+      );
+      if (replayingRef.current) return;
       setPixels((prev) => {
         const next = new Map(prev);
         next.set(`${payload.x}_${payload.y}`, payload.color);
@@ -103,41 +126,32 @@ export function usePixelSocket() {
   }, []);
 
   function paint(x: number, y: number, color: string) {
+    if (replayingRef.current) return;
     if (cooldownUntil && Date.now() < cooldownUntil) {
       const wait = cooldownUntil - Date.now();
       setRejectMessage(`Cooldown — wait ${(wait / 1000).toFixed(1)}s`);
       return;
     }
     setRejectMessage(null);
-    // Optimistic cooldown; server corrects via paintRejected if needed
     setCooldownUntil(Date.now() + cooldownMsRef.current);
     socketRef.current?.emit("paint", { x, y, color });
   }
 
-  function applyBoard(cells: PixelCell[]) {
-    const map = new Map<string, string>();
-    for (const p of cells) {
-      map.set(`${p.x}_${p.y}`, p.color);
-    }
-    setPixels(map);
+  function applyBoardMap(map: Map<string, string>) {
+    setPixels(new Map(map));
   }
 
-  function setPixelLocal(x: number, y: number, color: string) {
-    setPixels((prev) => {
-      const next = new Map(prev);
-      next.set(`${x}_${y}`, color);
-      return next;
-    });
+  function setReplaying(active: boolean) {
+    replayingRef.current = active;
+    setReplayingState(active);
+    if (!active) {
+      // Jump back to the true live board (includes paints that happened during replay)
+      setPixels(new Map(livePixelsRef.current));
+    }
   }
 
-  function clearBoard(size: number) {
-    const map = new Map<string, string>();
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        map.set(`${x}_${y}`, "#ffffff");
-      }
-    }
-    setPixels(map);
+  function blankBoardMap(size: number): Map<string, string> {
+    return emptyWhiteBoard(size);
   }
 
   return {
@@ -149,9 +163,10 @@ export function usePixelSocket() {
     rejectMessage,
     setRejectMessage,
     wakingUp,
+    replaying,
+    setReplaying,
     paint,
-    applyBoard,
-    setPixelLocal,
-    clearBoard,
+    applyBoardMap,
+    blankBoardMap,
   };
 }

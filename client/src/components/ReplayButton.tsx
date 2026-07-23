@@ -1,90 +1,109 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiBase } from "../config";
-import type { PaintLogEvent, PixelCell } from "../types";
+import type { PaintLogEvent } from "../types";
 
 interface ReplayButtonProps {
   gridSize: number;
-  livePixels: Map<string, string>;
-  onClear: (size: number) => void;
-  onPaintLocal: (x: number, y: number, color: string) => void;
-  onRestore: (cells: PixelCell[]) => void;
+  onApplyBoardMap: (map: Map<string, string>) => void;
+  blankBoardMap: (size: number) => Map<string, string>;
   onReplayingChange: (active: boolean) => void;
 }
 
-const PIXELS_PER_FRAME = 20;
+const TICK_MS = 60;
+/** Aim for ~4s of animation; short histories go 1 px / tick so you can actually see them. */
+const TARGET_DURATION_MS = 4000;
 
 export function ReplayButton({
   gridSize,
-  livePixels,
-  onClear,
-  onPaintLocal,
-  onRestore,
+  onApplyBoardMap,
+  blankBoardMap,
   onReplayingChange,
 }: ReplayButtonProps) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const snapshotRef = useRef<PixelCell[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+      if (timerRef.current != null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   async function startReplay() {
     if (busy) return;
+    cancelledRef.current = false;
     setBusy(true);
     onReplayingChange(true);
     setProgress("Loading history…");
-
-    snapshotRef.current = Array.from(livePixels.entries()).map(([key, color]) => {
-      const [x, y] = key.split("_").map(Number);
-      return { x, y, color };
-    });
 
     try {
       const res = await fetch(`${apiBase()}/replay`);
       if (!res.ok) throw new Error("replay failed");
       const data = (await res.json()) as { events: PaintLogEvent[]; gridSize: number };
       const events = data.events ?? [];
+      const size = data.gridSize ?? gridSize;
 
-      onClear(data.gridSize ?? gridSize);
+      if (cancelledRef.current) return;
 
       if (events.length === 0) {
+        onApplyBoardMap(blankBoardMap(size));
         setProgress("No history yet — be the first to paint");
-        window.setTimeout(() => {
-          onRestore(snapshotRef.current);
+        timerRef.current = window.setTimeout(() => {
+          onReplayingChange(false);
           setBusy(false);
           setProgress(null);
-          onReplayingChange(false);
-        }, 1200);
+        }, 1500);
         return;
       }
 
+      const board = blankBoardMap(size);
+      onApplyBoardMap(board);
+
+      const pixelsPerTick = Math.max(
+        1,
+        Math.ceil(events.length / (TARGET_DURATION_MS / TICK_MS))
+      );
+      // Short logs: one pixel at a time so the time-lapse is visible
+      const batchSize = events.length < 50 ? 1 : pixelsPerTick;
+      const delayMs = events.length < 50 ? 120 : TICK_MS;
+
       let i = 0;
+
       const step = () => {
-        const end = Math.min(i + PIXELS_PER_FRAME, events.length);
+        if (cancelledRef.current) return;
+
+        const end = Math.min(i + batchSize, events.length);
         for (; i < end; i++) {
           const e = events[i];
-          onPaintLocal(e.x, e.y, e.color);
+          board.set(`${e.x}_${e.y}`, e.color);
         }
+
+        // One React state update per tick
+        onApplyBoardMap(new Map(board));
         setProgress(`Replaying ${i} / ${events.length}`);
 
         if (i < events.length) {
-          rafRef.current = requestAnimationFrame(step);
+          timerRef.current = window.setTimeout(step, delayMs);
         } else {
           setProgress("Replay complete");
-          window.setTimeout(() => {
-            // Snap back to live board state captured at start, then let socket catch up
-            onRestore(snapshotRef.current);
+          timerRef.current = window.setTimeout(() => {
+            onReplayingChange(false);
             setBusy(false);
             setProgress(null);
-            onReplayingChange(false);
-          }, 800);
+          }, 1500);
         }
       };
 
-      rafRef.current = requestAnimationFrame(step);
+      // Let the blank board paint for a beat before the first pixels land
+      timerRef.current = window.setTimeout(step, 280);
     } catch {
       setProgress("Couldn’t load replay");
-      onRestore(snapshotRef.current);
-      setBusy(false);
       onReplayingChange(false);
+      setBusy(false);
       window.setTimeout(() => setProgress(null), 2000);
     }
   }

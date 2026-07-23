@@ -9,7 +9,6 @@ import { PALETTE } from "./types";
 
 export default function App() {
   const [color, setColor] = useState<string>(PALETTE[2]);
-  const [replaying, setReplaying] = useState(false);
   const {
     status,
     pixels,
@@ -17,10 +16,11 @@ export default function App() {
     cooldownUntil,
     rejectMessage,
     wakingUp,
+    replaying,
+    setReplaying,
     paint,
-    applyBoard,
-    setPixelLocal,
-    clearBoard,
+    applyBoardMap,
+    blankBoardMap,
   } = usePixelSocket();
 
   const statusLabel =
@@ -61,10 +61,8 @@ export default function App() {
             <StatsCounter />
             <ReplayButton
               gridSize={gridSize}
-              livePixels={pixels}
-              onClear={clearBoard}
-              onPaintLocal={setPixelLocal}
-              onRestore={applyBoard}
+              onApplyBoardMap={applyBoardMap}
+              blankBoardMap={blankBoardMap}
               onReplayingChange={setReplaying}
             />
             <span className={`status-dot status-${status}`} title={statusLabel}>
