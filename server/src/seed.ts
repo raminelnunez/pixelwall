@@ -1,5 +1,4 @@
-import "dotenv/config";
-import { connectMongo, closeMongo, pixelsCollection } from "./db.js";
+import { connectMongo, closeMongo, pixelsCollection, resolveMongoUri } from "./db.js";
 import type { Pixel } from "./types.js";
 
 const DEFAULT_COLOR = "#ffffff";
@@ -37,13 +36,9 @@ export async function seedPixels(gridSize: number): Promise<{ seeded: boolean; c
 }
 
 async function runCli() {
-  const uri = process.env.MONGODB_URI;
   const gridSize = Number(process.env.GRID_SIZE ?? 50);
-  if (!uri) {
-    console.error("Missing MONGODB_URI");
-    process.exit(1);
-  }
   try {
+    const uri = await resolveMongoUri(process.env.MONGODB_URI);
     await connectMongo(uri);
     const result = await seedPixels(gridSize);
     if (result.seeded) {

@@ -65,13 +65,15 @@ REST:
 ### Prerequisites
 
 - Node 20+
-- MongoDB (local) **or** [MongoDB Atlas](https://www.mongodb.com/atlas) free M0 cluster
+- **No Mongo install required for local play** — set `MONGODB_URI=memory` (default in `.env.example`)
+- For a persistent DB: local `mongod` **or** [MongoDB Atlas](https://www.mongodb.com/atlas) free M0
 
 ### Setup
 
 ```bash
 cp .env.example server/.env
-# edit MONGODB_URI
+# default is MONGODB_URI=memory — works immediately
+# for Atlas: paste your real mongodb+srv://… string (not USER/PASS/CLUSTER placeholders)
 
 npm install
 npm install --prefix server
@@ -79,6 +81,8 @@ npm install --prefix client
 
 npm run dev
 ```
+
+If you see `querySrv ENOTFOUND _mongodb._tcp.CLUSTER.mongodb.net`, your `.env` still has the example placeholder host. Replace it with `memory` or a real Atlas URI.
 
 - Client: http://localhost:5173  
 - Server: http://localhost:3001  

@@ -1,9 +1,14 @@
-import "dotenv/config";
 import http from "http";
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
-import { connectMongo, ensureIndexes, paintLogCollection, pixelsCollection } from "./db.js";
+import {
+  connectMongo,
+  ensureIndexes,
+  paintLogCollection,
+  pixelsCollection,
+  resolveMongoUri,
+} from "./db.js";
 import { seedPixels } from "./seed.js";
 import {
   HEX_COLOR_RE,
@@ -16,12 +21,6 @@ const PORT = Number(process.env.PORT ?? 3001);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 const GRID_SIZE = Number(process.env.GRID_SIZE ?? 50);
 const COOLDOWN_MS = Number(process.env.COOLDOWN_MS ?? 10_000);
-const MONGODB_URI = process.env.MONGODB_URI;
-if (!MONGODB_URI) {
-  console.error("Missing MONGODB_URI. Copy .env.example to server/.env");
-  process.exit(1);
-}
-const mongoUri: string = MONGODB_URI;
 
 /** visitorId (or socket id) → last successful paint time */
 const lastPaintByVisitor = new Map<string, number>();
@@ -38,6 +37,7 @@ function isInBounds(x: number, y: number): boolean {
 }
 
 async function main() {
+  const mongoUri = await resolveMongoUri(process.env.MONGODB_URI);
   await connectMongo(mongoUri);
   await ensureIndexes();
 
