@@ -118,6 +118,12 @@ npm run seed --prefix server
    - `VITE_SOCKET_URL` = same origin as the API (or omit if identical)
 4. Optional: custom domain on the frontend so the link isn’t `*.onrender.com`.
 
+### Troubleshooting: `SSL alert number 80` / `tlsv1 alert internal error`
+
+This looks like a TLS bug but is almost always **Atlas Network Access blocking your host's IP**. Render/Railway/Fly don't have a fixed outbound IP on free tiers, so:
+
+Atlas → **Network Access** → **Add IP Address** → **Allow Access from Anywhere** (`0.0.0.0/0`). Your DB user/password still gates access — this just stops Atlas rejecting the connection before auth even happens.
+
 ## Project layout
 
 ```

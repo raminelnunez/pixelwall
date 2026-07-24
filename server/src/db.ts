@@ -63,11 +63,37 @@ export async function resolveMongoUri(raw: string | undefined): Promise<string> 
   return uri;
 }
 
+function looksLikeAtlasNetworkAccessError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("SSL alert number 80") ||
+    message.includes("tlsv1 alert internal error") ||
+    message.includes("ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR")
+  );
+}
+
 export async function connectMongo(uri: string): Promise<Db> {
   if (db) return db;
 
   client = new MongoClient(uri);
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (err) {
+    if (looksLikeAtlasNetworkAccessError(err)) {
+      console.error(
+        [
+          "",
+          "Mongo connection failed with a TLS handshake error (SSL alert 80).",
+          "This almost always means Atlas is rejecting your host's IP, not a real TLS bug.",
+          "",
+          "Fix: Atlas → Network Access → Add IP Address → Allow Access from Anywhere (0.0.0.0/0)",
+          "(Hosts like Render/Railway/Fly don't have a fixed IP on free tiers.)",
+          "",
+        ].join("\n")
+      );
+    }
+    throw err;
+  }
   db = client.db();
   return db;
 }
