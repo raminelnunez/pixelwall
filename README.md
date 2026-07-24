@@ -111,7 +111,7 @@ npm run seed --prefix server
 1. **MongoDB Atlas** (M0 free) — create a cluster, DB user, allow network access, copy URI into `MONGODB_URI`.
 2. **Backend** — Render / Railway / Fly.io (needs a long-lived process for WebSockets). Set:
    - `MONGODB_URI`
-   - `CLIENT_ORIGIN` = your frontend URL
+   - `CLIENT_ORIGIN` = your frontend URL, e.g. `https://pixel-wall-yourname.vercel.app` (no trailing slash). Comma-separate multiple: `https://foo.vercel.app,https://mydomain.com`
    - `PORT` (platform usually sets this)
 3. **Frontend** — Vercel / Netlify. Set:
    - `VITE_API_URL` = `https://your-api.example.com`
@@ -123,6 +123,10 @@ npm run seed --prefix server
 This looks like a TLS bug but is almost always **Atlas Network Access blocking your host's IP**. Render/Railway/Fly don't have a fixed outbound IP on free tiers, so:
 
 Atlas → **Network Access** → **Add IP Address** → **Allow Access from Anywhere** (`0.0.0.0/0`). Your DB user/password still gates access — this just stops Atlas rejecting the connection before auth even happens.
+
+### Troubleshooting: CORS error, `Access-Control-Allow-Origin` value doesn't match
+
+`CLIENT_ORIGIN` on the backend still points at `http://localhost:5173` (the default) instead of your deployed frontend URL. Set it on your host's environment settings to your real frontend URL(s) and redeploy — see step 2 above.
 
 ## Project layout
 

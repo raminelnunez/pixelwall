@@ -18,9 +18,18 @@ import {
 } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+/** Comma-separated list, e.g. "https://foo.vercel.app,https://mydomain.com" */
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGIN ?? "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 const GRID_SIZE = Number(process.env.GRID_SIZE ?? 50);
 const COOLDOWN_MS = Number(process.env.COOLDOWN_MS ?? 10_000);
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // same-origin / curl / server-to-server
+  return CLIENT_ORIGINS.includes(origin.replace(/\/$/, ""));
+}
 
 /** visitorId (or socket id) → last successful paint time */
 const lastPaintByVisitor = new Map<string, number>();
@@ -49,7 +58,17 @@ async function main() {
   }
 
   const app = express();
-  app.use(cors({ origin: CLIENT_ORIGIN }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin not allowed: ${origin}`));
+        }
+      },
+    })
+  );
   app.use(express.json());
 
   app.get("/health", (_req, res) => {
@@ -86,7 +105,15 @@ async function main() {
 
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
-    cors: { origin: CLIENT_ORIGIN },
+    cors: {
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin not allowed: ${origin}`));
+        }
+      },
+    },
     // Help cold-start / flaky free-tier hosts
     pingTimeout: 60_000,
     pingInterval: 25_000,
@@ -186,7 +213,7 @@ async function main() {
 
   httpServer.listen(PORT, () => {
     console.log(`Pixel Wall server listening on :${PORT}`);
-    console.log(`  CORS origin: ${CLIENT_ORIGIN}`);
+    console.log(`  CORS origins: ${CLIENT_ORIGINS.join(", ")}`);
     console.log(`  Grid: ${GRID_SIZE}×${GRID_SIZE}, cooldown: ${COOLDOWN_MS}ms`);
   });
 }
